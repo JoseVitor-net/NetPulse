@@ -1,0 +1,23 @@
+2026-05-05 08:36:19.425 | INFO     | app.infra.database:_init_db:28 - Database initialized successfully.
+2026-05-05 08:36:35.566 | INFO     | app.services.ping_service:run:24 - Starting ping to 192.168.0.1
+2026-05-05 08:36:42.411 | INFO     | app.services.ping_service:run:67 - Stopped ping to 192.168.0.1
+2026-05-05 08:36:51.361 | INFO     | app.services.ping_service:run:24 - Starting ping to 192.168.1.1
+2026-05-05 08:36:57.898 | INFO     | app.services.ping_service:run:67 - Stopped ping to 192.168.1.1
+2026-05-05 08:37:29.369 | INFO     | app.services.ping_service:run:24 - Starting ping to 192.168.0.1
+2026-05-05 08:37:35.905 | INFO     | app.services.ping_service:run:67 - Stopped ping to 192.168.0.1
+2026-05-05 08:37:53.338 | INFO     | app.services.ping_service:run:24 - Starting ping to 100.116.192.56
+2026-05-05 08:37:56.432 | INFO     | app.services.ping_service:run:67 - Stopped ping to 100.116.192.56
+2026-05-05 08:38:33.942 | INFO     | app.services.ping_service:run:24 - Starting ping to 19216801
+2026-05-05 08:38:40.900 | INFO     | app.services.ping_service:run:67 - Stopped ping to 19216801
+2026-05-05 08:40:27.189 | INFO     | app.services.ping_service:run:24 - Starting ping to 8.8.8.8
+2026-05-05 08:40:30.415 | INFO     | app.services.ping_service:run:67 - Stopped ping to 8.8.8.8
+2026-05-05 08:48:43.525 | INFO     | app.infra.database:_init_db:28 - Database initialized successfully.
+2026-05-05 08:48:45.989 | INFO     | app.services.ping_service:run:32 - Iniciando monitoramento de rede via ICMP (ping3) para: 8.8.8.8
+2026-05-05 08:48:49.130 | INFO     | app.services.ping_service:run:78 - Monitoramento encerrado para: 8.8.8.8
+2026-05-05 08:49:00.990 | INFO     | app.services.ping_service:run:32 - Iniciando monitoramento de rede via ICMP (ping3) para: 8.8.8.8
+2026-05-05 08:49:20.734 | INFO     | app.services.ping_service:run:78 - Monitoramento encerrado para: 8.8.8.8
+2026-05-05 08:49:24.074 | INFO     | app.services.report_service:generate_html_report:90 - Report generated successfully: reports\report_8_8_8_8_20260505084924.html
+2026-05-05 09:14:42.030 | INFO     | app.infra.database:_init_db:28 - Database initialized successfully.
+2026-05-05 09:14:46.778 | INFO     | app.services.ping_service:run:33 - Iniciando monitoramento de rede via ICMP (ping3) para: 8.8.8.8
+2026-05-05 09:14:46.780 | INFO     | app.services.ping_service:run:38 - Hostname resolvido para IP: 8.8.8.8
+2026-05-05 09:14:49.920 | INFO     | app.services.ping_service:run:91 - Monitoramento encerrado para: 8.8.8.8
