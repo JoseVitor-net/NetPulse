@@ -1,66 +1,70 @@
 from PyQt6.QtWidgets import QWidget, QVBoxLayout
-from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtCore import QUrl
-import plotly.graph_objects as go
-import plotly.io as pio
-import os
-import tempfile
+import pyqtgraph as pg
 from collections import deque
+import random
 
-class PlotlyDashboard(QWidget):
+class PyQtGraphDashboard(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         
-        self.web_view = QWebEngineView()
-        self.layout.addWidget(self.web_view)
+        # Configurar cores base
+        pg.setConfigOption('background', '#1e1e2e')
+        pg.setConfigOption('foreground', '#cdd6f4')
+        pg.setConfigOptions(antialias=True)
         
-        self.x_data = deque(maxlen=60)
-        self.y_data = deque(maxlen=60)
-        self.times = 0
+        self.plot_widget = pg.PlotWidget()
+        self.plot_widget.addLegend() # Adiciona legenda para múltiplos hosts
+        self.layout.addWidget(self.plot_widget)
         
-        self._init_plot()
+        self.plot_widget.setLabel('left', 'Latency (ms)')
+        self.plot_widget.setLabel('bottom', 'Pings')
+        self.plot_widget.showGrid(x=True, y=True, alpha=0.3)
+        
+        # Estado do Multi-host
+        self.hosts_data = {}  # dict[host] -> {'x': deque, 'y': deque, 'times': int, 'curve': PlotDataItem}
+        
+        # Cores predefinidas para os primeiros hosts, depois sorteia
+        self.palette = ['#a6e3a1', '#89b4fa', '#f38ba8', '#f9e2af', '#cba6f7', '#94e2d5']
+        self.color_idx = 0
 
-    def _init_plot(self):
-        self.fig = go.Figure()
-        self.fig.add_trace(go.Scatter(
-            x=list(self.x_data), 
-            y=list(self.y_data), 
-            mode='lines+markers',
-            name='Latency',
-            line=dict(color='#a6e3a1', width=2),
-            marker=dict(size=6, color='#89b4fa')
-        ))
+    def init_host(self, host: str):
+        if host in self.hosts_data:
+            return
+            
+        color = self.palette[self.color_idx % len(self.palette)]
+        self.color_idx += 1
         
-        self.fig.update_layout(
-            template="plotly_dark",
-            paper_bgcolor="#1e1e2e",
-            plot_bgcolor="#1e1e2e",
-            margin=dict(l=20, r=20, t=20, b=20),
-            xaxis=dict(title="Time", showgrid=True, gridcolor="#313244", zeroline=False),
-            yaxis=dict(title="Latency (ms)", showgrid=True, gridcolor="#313244", zeroline=False),
-            font=dict(color="#cdd6f4")
+        pen = pg.mkPen(color=color, width=2)
+        curve = self.plot_widget.plot(
+            [], [], 
+            pen=pen, 
+            symbol='o', 
+            symbolSize=5, 
+            symbolBrush=color,
+            name=host
         )
-        self._update_webview()
-
-    def update_data(self, latency_ms: float):
-        self.times += 1
-        self.x_data.append(self.times)
-        self.y_data.append(latency_ms)
         
-        # In a very high frequency app we would use JavaScript injection.
-        # For 1 ping per second, regenerating HTML is acceptable and robust.
-        self.fig.data[0].x = tuple(self.x_data)
-        self.fig.data[0].y = tuple(self.y_data)
-        self._update_webview()
+        self.hosts_data[host] = {
+            'x': deque(maxlen=60),
+            'y': deque(maxlen=60),
+            'times': 0,
+            'curve': curve
+        }
+
+    def update_data(self, host: str, latency_ms: float):
+        if host not in self.hosts_data:
+            self.init_host(host)
+            
+        data = self.hosts_data[host]
+        data['times'] += 1
+        data['x'].append(data['times'])
+        data['y'].append(latency_ms)
+        
+        data['curve'].setData(list(data['x']), list(data['y']))
         
     def reset(self):
-        self.x_data.clear()
-        self.y_data.clear()
-        self.times = 0
-        self._init_plot()
-
-    def _update_webview(self):
-        html = pio.to_html(self.fig, include_plotlyjs='cdn', full_html=True)
-        self.web_view.setHtml(html)
+        self.plot_widget.clear()
+        self.hosts_data.clear()
+        self.color_idx = 0

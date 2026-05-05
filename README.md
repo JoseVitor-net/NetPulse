@@ -1,44 +1,35 @@
 # NetPulse
 
-NetPulse é um aplicativo desktop profissional para monitoramento de rede e análise de latência.
-Foi desenvolvido utilizando as melhores práticas de Engenharia de Software, padrão em camadas (MVC), e possui uma interface moderna (dark theme).
+Uma ferramenta de monitoramento de rede em tempo real com análise inteligente, histórico persistente e replay de sessões.
 
-## Funcionalidades
-- **Ping Avançado**: Modos Padrão, Customizado e Contínuo.
-- **Métricas Precisas**: Latência, timeout, perda de pacotes, jitter, min, max, avg.
-- **Dashboard Real-time**: Gráficos dinâmicos integrados com Plotly.
-- **Relatórios**: Geração de relatórios HTML.
-- **Persistência**: Histórico salvo localmente via SQLite.
+## Features
 
-## Estrutura do Projeto
-- `app/ui`: Componentes de Interface Gráfica (PyQt6).
-- `app/core`: Entidades de domínio e modelos de dados.
-- `app/services`: Lógica de negócios (Ping concorrente, Relatórios).
-- `app/infra`: Infraestrutura (Banco de dados, Logger).
+- Monitoramento ICMP multi-host em tempo real
+- Interface gráfica com PyQt6
+- Gráficos de latência em tempo real
+- Sistema de alertas (latência, perda, falha de ISP)
+- Análise inteligente de rede (NetworkAnalyzer)
+- Persistência completa em SQLite
+- Histórico de sessões de monitoramento
+- Replay de sessões como se fossem tempo real
+- Suporte a múltiplos hosts simultâneos
 
-## Como Rodar
+## Arquitetura
 
-1. Crie e ative um ambiente virtual:
-   ```bash
-   python -m venv venv
-   # Windows:
-   venv\Scripts\activate
-   # Linux/Mac:
-   source venv/bin/activate
-   ```
+O sistema é construído sobre uma arquitetura limpa em camadas, garantindo alta performance e isolamento de responsabilidades:
 
-2. Instale as dependências:
-   ```bash
-   pip install -r requirements.txt
-   ```
+- **PingManager**: Orquestra a execução em tempo real, mediando a comunicação entre a rede e a UI.
+- **PingService**: Executa o ICMP em threads dedicadas (QThread), sem bloquear a interface.
+- **NetworkAnalyzer**: Motor puro Python que detecta anomalias de rede (quedas, picos e correlação de falhas de ISP) através de janelas deslizantes (Event Stream).
+- **Storage**: Persistência em banco de dados SQLite com gravação em batch para não causar gargalos de I/O nas execuções.
+- **ReplayEngine**: Motor independente de reprodução de histórico (Event Sourcing) que simula sessões passadas de forma temporal.
+- **UI (PyQt6)**: Camada passiva e focada apenas na visualização dos dados e interações do usuário.
 
-3. Execute a aplicação:
-   ```bash
-   python main.py
-   ```
+## Como Executar
 
-## Testes
-Para rodar os testes unitários:
+Clone o repositório, ative seu ambiente virtual (recomendado) e instale as dependências:
+
 ```bash
-pytest
+pip install -r requirements.txt
+python main.py
 ```

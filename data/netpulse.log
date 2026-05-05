@@ -21,3 +21,18 @@
 2026-05-05 09:14:46.778 | INFO     | app.services.ping_service:run:33 - Iniciando monitoramento de rede via ICMP (ping3) para: 8.8.8.8
 2026-05-05 09:14:46.780 | INFO     | app.services.ping_service:run:38 - Hostname resolvido para IP: 8.8.8.8
 2026-05-05 09:14:49.920 | INFO     | app.services.ping_service:run:91 - Monitoramento encerrado para: 8.8.8.8
+2026-05-05 10:58:02.134 | INFO     | app.infra.database:_init_db:28 - Database initialized successfully.
+2026-05-05 10:58:02.148 | INFO     | app.infra.storage:_init_schema:341 - [Storage] Schema inicializado.
+2026-05-05 10:58:09.212 | INFO     | app.infra.storage:create_session:254 - [Storage] Sessão criada: dc278119-daf0-4778-ae5c-e70468b5dc1a
+2026-05-05 10:58:09.212 | INFO     | app.core.session_manager:begin:42 - [SessionManager] Sessão iniciada: dc278119-daf0-4778-ae5c-e70468b5dc1a
+2026-05-05 10:58:09.213 | INFO     | app.services.ping_service:run:33 - Iniciando monitoramento de rede via ICMP (ping3) para: 8.8.8.8
+2026-05-05 10:58:09.215 | INFO     | app.services.ping_service:run:38 - Hostname resolvido para IP: 8.8.8.8
+2026-05-05 10:58:12.356 | INFO     | app.services.ping_service:run:91 - Monitoramento encerrado para: 8.8.8.8
+2026-05-05 10:58:12.372 | INFO     | app.core.session_manager:end:49 - [SessionManager] Sessão encerrada: dc278119-daf0-4778-ae5c-e70468b5dc1a
+2026-05-05 10:58:34.019 | INFO     | app.infra.storage:create_session:254 - [Storage] Sessão criada: baa39435-75d4-4542-aeca-3c17abf40238
+2026-05-05 10:58:34.019 | INFO     | app.core.session_manager:begin:42 - [SessionManager] Sessão iniciada: baa39435-75d4-4542-aeca-3c17abf40238
+2026-05-05 10:58:34.020 | INFO     | app.services.ping_service:run:33 - Iniciando monitoramento de rede via ICMP (ping3) para: 8.8.8.8
+2026-05-05 10:58:34.020 | INFO     | app.services.ping_service:run:38 - Hostname resolvido para IP: 8.8.8.8
+2026-05-05 10:58:58.915 | INFO     | app.services.ping_service:run:91 - Monitoramento encerrado para: 8.8.8.8
+2026-05-05 10:58:58.933 | INFO     | app.core.session_manager:end:49 - [SessionManager] Sessão encerrada: baa39435-75d4-4542-aeca-3c17abf40238
+2026-05-05 10:59:01.919 | INFO     | app.services.report_service:generate_html_report:90 - Report generated successfully: reports\report_8_8_8_8_20260505105901.html
