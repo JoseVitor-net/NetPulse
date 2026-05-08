@@ -58,8 +58,9 @@ class PingManager(QObject):
         Higieniza e deduplica a string de hosts fornecida pelo usuário.
         Responsabilidade de negócio — pertence ao Manager, não à UI.
         """
+        import re
         hosts = []
-        for h in raw.split(","):
+        for h in re.split(r'[,\n\s;]+', raw):
             clean = h.strip().replace("http://", "").replace("https://", "").split("/")[0]
             if clean and clean not in hosts:
                 hosts.append(clean)
@@ -92,10 +93,17 @@ class PingManager(QObject):
     def stop_session(self) -> None:
         """Para todos os workers, faz flush do storage e encerra a sessão."""
         self._is_running = False
+        
+        # 1. Sinaliza parada para todos simultaneamente
         for worker in self._threads.values():
             if worker.isRunning():
                 worker.stop()
+                
+        # 2. Aguarda o término (custo máximo de 1 timeout, em vez de N timeouts)
+        for worker in self._threads.values():
+            if worker.isRunning():
                 worker.wait()
+                
         self._storage.flush_all()
         self._session_manager.end()
 
@@ -107,32 +115,46 @@ class PingManager(QObject):
     def is_running(self) -> bool:
         return self._is_running
 
-    # ─────────────────────────────────────────────
-    # API Pública — Histórico
-    # ─────────────────────────────────────────────
-
     def request_sessions(self) -> None:
         """
         Busca sessões recentes no banco e emite sessions_loaded para a UI.
-        A UI chama isso ao clicar 'Load History' — não acessa Storage diretamente.
+        A UI chama isso ao clicar 'Load History'.
         """
-        sessions = self._storage.get_sessions()
+        sessions = self._storage.list_sessions()
         self.sessions_loaded.emit(sessions)
 
+    def get_session_summary(self, session_id: str) -> dict:
+        """Delega ao Storage. Chamado pela MainWindow no modo REPLAY."""
+        return self._storage.get_session_summary(session_id)
+
+    def list_sessions(
+        self,
+        host_filter: str | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
+    ) -> list[dict]:
+        """Delega ao Storage com filtros. Chamado pelo HistoryPanel via MainWindow."""
+        return self._storage.list_sessions(
+            host_filter=host_filter or None,
+            date_from=date_from or None,
+            date_to=date_to or None,
+        )
+
+    # ── Mantido para retrocompatibilidade — novo código usa ReplayEngine ───
     def load_session(self, session_id: str) -> None:
         """
-        Carrega dados históricos de uma sessão convertidos em event stream.
-        A UI recebe os mesmos sinais na mesma ordem cronológica que ocorreram.
+        Reprodução síncrona rápida (snapshot final).
+        Emite stats_updated/chart_point_ready uma única vez por host.
+        Para replay controlado use ReplayEngine diretamente.
         """
+        from app.core.replay_engine import ReplayEngine
         engine = ReplayEngine(self._storage)
-        
         for event in engine.stream_session(session_id):
             if event.event_type == "ping":
                 if event.payload["success"] and event.payload["latency_ms"] is not None:
                     self.chart_point_ready.emit(event.host, event.payload["latency_ms"])
-                    
             elif event.event_type == "stats":
-                fake_stats = _StatsSnapshot(
+                snap = _StatsSnapshot(
                     host=event.host,
                     avg=event.payload["avg_latency"],
                     min_val=event.payload["min_latency"],
@@ -141,17 +163,17 @@ class PingManager(QObject):
                     std_dev=event.payload["std_dev"],
                     mos=event.payload["mos"],
                 )
-                self.stats_updated.emit(event.host, fake_stats, "Historical")
-                
+                self.stats_updated.emit(event.host, snap, "Historical")
             elif event.event_type == "alert":
-                alert = Alert(
+                from app.core.models import Alert
+                self.alert_raised.emit(Alert(
                     host=event.host,
                     severity=event.payload["severity"],
                     kind=event.payload["kind"],
                     message=event.payload["message"],
                     timestamp=event.timestamp,
-                )
-                self.alert_raised.emit(alert)
+                ))
+
 
     # ─────────────────────────────────────────────
     # Handlers Internos (privados)

@@ -142,27 +142,143 @@ class Storage:
             logger.error(f"[Storage] Erro ao salvar stats snapshot: {e}")
 
     # ─────────────────────────────────────────────────────────────
-    # API de Leitura (chamadas da UI via PingManager)
+    # API de Leitura (chamadas da UI via PingManager / HistoryPanel)
     # ─────────────────────────────────────────────────────────────
 
-    def get_sessions(self, limit: int = 20) -> list[dict]:
+    def list_sessions(
+        self,
+        host_filter: str | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
+        limit: int = 50,
+    ) -> list[dict]:
         """
-        Retorna as sessões mais recentes para popular o dropdown da UI.
-        Cada dict: {session_id, started_at, ended_at, hosts}
+        Lista sessões com filtros opcionais.
+        Cada dict: {session_id, started_at, ended_at, hosts, ping_count}
         """
         try:
             with sqlite3.connect(self._db_path) as conn:
                 conn.row_factory = sqlite3.Row
+                clauses: list[str] = []
+                params: list = []
+
+                if host_filter:
+                    clauses.append("s.hosts LIKE ?")
+                    params.append(f"%{host_filter}%")
+                if date_from:
+                    clauses.append("s.started_at >= ?")
+                    params.append(date_from)
+                if date_to:
+                    clauses.append("s.started_at <= ?")
+                    params.append(date_to + "T23:59:59")
+
+                where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+                params.append(limit)
+
                 rows = conn.execute(
-                    """SELECT session_id, started_at, ended_at, hosts
-                       FROM sessions
-                       ORDER BY started_at DESC
-                       LIMIT ?""",
-                    (limit,),
+                    f"""SELECT s.session_id, s.started_at, s.ended_at, s.hosts,
+                               COUNT(p.id) AS ping_count
+                        FROM sessions s
+                        LEFT JOIN pings p ON p.session_id = s.session_id
+                        {where}
+                        GROUP BY s.session_id
+                        ORDER BY s.started_at DESC
+                        LIMIT ?""",
+                    params,
                 ).fetchall()
             return [dict(r) for r in rows]
         except Exception as e:
             logger.error(f"[Storage] Erro ao listar sessões: {e}")
+            return []
+
+    # Alias de retrocompatibilidade para código legado
+    def get_sessions(self, limit: int = 20) -> list[dict]:
+        return self.list_sessions(limit=limit)
+
+    def get_session_summary(self, session_id: str) -> dict:
+        """
+        Resumo agregado de uma sessão inteira.
+        Retorna: {session_id, started_at, ended_at, hosts, total_pings,
+                  total_losses, avg_latency, min_latency, max_latency,
+                  avg_mos, avg_std_dev, alert_count}
+        """
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.row_factory = sqlite3.Row
+
+                sess = conn.execute(
+                    "SELECT * FROM sessions WHERE session_id = ?", (session_id,)
+                ).fetchone()
+                if not sess:
+                    return {}
+
+                p = conn.execute(
+                    """SELECT COUNT(*) AS total,
+                              SUM(CASE WHEN success=0 THEN 1 ELSE 0 END) AS losses,
+                              AVG(latency_ms) AS avg_lat,
+                              MIN(latency_ms) AS min_lat,
+                              MAX(latency_ms) AS max_lat
+                       FROM pings WHERE session_id = ?""",
+                    (session_id,),
+                ).fetchone()
+
+                sn = conn.execute(
+                    """SELECT AVG(mos) AS avg_mos, AVG(std_dev) AS avg_std
+                       FROM stats_snapshots WHERE session_id = ?""",
+                    (session_id,),
+                ).fetchone()
+
+                ac = conn.execute(
+                    "SELECT COUNT(*) FROM alerts WHERE session_id = ?",
+                    (session_id,),
+                ).fetchone()[0]
+
+            hosts_raw = sess["hosts"]
+            return {
+                "session_id": sess["session_id"],
+                "started_at": sess["started_at"],
+                "ended_at": sess["ended_at"],
+                "hosts": json.loads(hosts_raw) if hosts_raw else [],
+                "total_pings": p["total"] or 0,
+                "total_losses": p["losses"] or 0,
+                "avg_latency": round(p["avg_lat"] or 0.0, 2),
+                "min_latency": round(p["min_lat"] or 0.0, 2),
+                "max_latency": round(p["max_lat"] or 0.0, 2),
+                "avg_mos": round(sn["avg_mos"] or 0.0, 2),
+                "avg_std_dev": round(sn["avg_std"] or 0.0, 2),
+                "alert_count": ac,
+            }
+        except Exception as e:
+            logger.error(f"[Storage] Erro ao buscar summary: {e}")
+            return {}
+
+    def get_session_results(
+        self, session_id: str, host: str | None = None
+    ) -> list[dict]:
+        """
+        Todos os pings de uma sessão, opcionalmente filtrados por host.
+        Cada dict: {host, latency_ms, timestamp, success, error_msg}
+        """
+        try:
+            with sqlite3.connect(self._db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                if host:
+                    rows = conn.execute(
+                        """SELECT host, latency_ms, timestamp, success, error_msg
+                           FROM pings WHERE session_id=? AND host=?
+                           ORDER BY timestamp ASC""",
+                        (session_id, host),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        """SELECT host, latency_ms, timestamp, success, error_msg
+                           FROM pings WHERE session_id=?
+                           ORDER BY timestamp ASC""",
+                        (session_id,),
+                    ).fetchall()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logger.error(f"[Storage] Erro ao buscar resultados: {e}")
             return []
 
     def get_session_hosts(self, session_id: str) -> list[str]:
@@ -180,24 +296,8 @@ class Storage:
         return []
 
     def get_session_pings(self, session_id: str, host: str) -> list[dict]:
-        """
-        Retorna todos os pings de um host numa sessão.
-        Cada dict: {latency_ms, timestamp, success, error_msg}
-        """
-        try:
-            with sqlite3.connect(self._db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                rows = conn.execute(
-                    """SELECT latency_ms, timestamp, success, error_msg
-                       FROM pings
-                       WHERE session_id = ? AND host = ?
-                       ORDER BY timestamp ASC""",
-                    (session_id, host),
-                ).fetchall()
-            return [dict(r) for r in rows]
-        except Exception as e:
-            logger.error(f"[Storage] Erro ao buscar pings: {e}")
-            return []
+        """Alias retrocompat: retorna pings de um host numa sessão."""
+        return self.get_session_results(session_id, host)
 
     def get_session_stats(self, session_id: str) -> list[dict]:
         """
