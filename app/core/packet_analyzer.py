@@ -88,8 +88,10 @@ class PacketAnalyzer:
     # ── API pública ────────────────────────────────────────────────────────
 
     def add_packets(self, batch: list[PacketRow]) -> None:
-        """Adiciona um batch de pacotes à lista mestre."""
+        """Adiciona um batch de pacotes à lista mestre (limite 10.000)."""
         self._all.extend(batch)
+        if len(self._all) > 10000:
+            self._all = self._all[-10000:]
 
     def clear(self) -> None:
         """Limpa todos os pacotes (nova captura)."""

@@ -31,7 +31,7 @@ _PROTO_COLORS: dict[str, str] = {
 _DEFAULT_COLOR = "#cdd6f4"
 
 # Máximo de linhas exibidas na tabela (performance)
-_MAX_DISPLAY_ROWS = 5_000
+_MAX_DISPLAY_ROWS = 10_000
 
 
 class PacketPanel(QWidget):
@@ -47,6 +47,11 @@ class PacketPanel(QWidget):
     filter_applied    = pyqtSignal(str, str, str, str)
     export_requested  = pyqtSignal()
     open_file_requested = pyqtSignal()
+    
+    # Live Capture Sinais
+    live_start_requested = pyqtSignal(str, str) # iface, bpf_filter
+    live_stop_requested  = pyqtSignal()
+    live_save_requested  = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -57,7 +62,7 @@ class PacketPanel(QWidget):
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(6)
 
-        # ── Barra de ferramentas ───────────────────────────────────────────
+        # ── Barra de ferramentas (Live Capture & File) ─────────────────────
         toolbar = QHBoxLayout()
 
         self.btn_open = QPushButton("📂  Open PCAP")
@@ -68,6 +73,34 @@ class PacketPanel(QWidget):
         self.btn_export.clicked.connect(self.export_requested)
         self.btn_export.setEnabled(False)
         toolbar.addWidget(self.btn_export)
+        
+        toolbar.addSpacing(20)
+
+        # Controles Live Capture
+        toolbar.addWidget(QLabel("Interface:"))
+        self.combo_iface = QComboBox()
+        self.combo_iface.setMinimumWidth(150)
+        toolbar.addWidget(self.combo_iface)
+
+        toolbar.addWidget(QLabel("BPF Filter:"))
+        self.input_bpf = QLineEdit()
+        self.input_bpf.setPlaceholderText("ex: tcp port 80")
+        self.input_bpf.setMinimumWidth(120)
+        toolbar.addWidget(self.input_bpf)
+
+        self.btn_live_start = QPushButton("▶  Start")
+        self.btn_live_start.clicked.connect(self._on_live_start)
+        toolbar.addWidget(self.btn_live_start)
+
+        self.btn_live_stop = QPushButton("⏹  Stop")
+        self.btn_live_stop.clicked.connect(self.live_stop_requested)
+        self.btn_live_stop.setEnabled(False)
+        toolbar.addWidget(self.btn_live_stop)
+
+        self.btn_live_save = QPushButton("💾  Save .pcap")
+        self.btn_live_save.clicked.connect(self.live_save_requested)
+        self.btn_live_save.setEnabled(False)
+        toolbar.addWidget(self.btn_live_save)
 
         toolbar.addStretch()
 
@@ -218,6 +251,26 @@ class PacketPanel(QWidget):
             self.btn_open.setEnabled(True)
             self.btn_export.setEnabled(True)
 
+    def populate_interfaces(self, interfaces: list[str]) -> None:
+        self.combo_iface.clear()
+        self.combo_iface.addItems(interfaces)
+
+    def set_live_mode(self, active: bool) -> None:
+        if active:
+            self.btn_live_start.setEnabled(False)
+            self.btn_live_stop.setEnabled(True)
+            self.btn_live_save.setEnabled(False)
+            self.btn_open.setEnabled(False)
+            self.combo_iface.setEnabled(False)
+            self.input_bpf.setEnabled(False)
+        else:
+            self.btn_live_start.setEnabled(True)
+            self.btn_live_stop.setEnabled(False)
+            self.btn_live_save.setEnabled(True)
+            self.btn_open.setEnabled(True)
+            self.combo_iface.setEnabled(True)
+            self.input_bpf.setEnabled(True)
+
     # ── Slots internos ─────────────────────────────────────────────────────
 
     def _on_apply(self) -> None:
@@ -234,3 +287,8 @@ class PacketPanel(QWidget):
         self.proto_combo.setCurrentIndex(0)
         self.text_input.clear()
         self.filter_applied.emit("", "", "", "")
+
+    def _on_live_start(self) -> None:
+        iface = self.combo_iface.currentText()
+        bpf = self.input_bpf.text().strip()
+        self.live_start_requested.emit(iface, bpf)

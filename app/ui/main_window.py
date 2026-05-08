@@ -28,7 +28,7 @@ from PyQt6.QtGui import QFont, QColor
 from app.core.models import Alert, PingStats, SessionConfig
 from app.core.replay_engine import ReplayEngine
 from app.core.packet_analyzer import PacketAnalyzer, PacketFilter
-from app.infra.pcap_reader import PcapReader
+from app.infra.pcap_reader import PcapReader, PcapSniffer, get_windows_if_list
 from app.services.ping_manager import PingManager
 from app.services.report_service import ReportService
 from app.ui.alert_panel import AlertPanel
@@ -65,6 +65,7 @@ class MainWindow(QMainWindow):
         # v0.7 — estado do analisador de pacotes
         self._analyzer       = PacketAnalyzer()
         self._pcap_reader:   PcapReader | None = None
+        self._pcap_sniffer:  PcapSniffer | None = None
         self._filtered_pkts  = []   # lista em cache apos filtro
 
         self._setup_ui()
@@ -208,6 +209,11 @@ class MainWindow(QMainWindow):
         self.packet_panel.open_file_requested.connect(self._on_pcap_open)
         self.packet_panel.filter_applied.connect(self._on_pcap_filter)
         self.packet_panel.export_requested.connect(self._on_pcap_export)
+        
+        self.packet_panel.live_start_requested.connect(self._on_pcap_live_start)
+        self.packet_panel.live_stop_requested.connect(self._on_pcap_live_stop)
+        self.packet_panel.live_save_requested.connect(self._on_pcap_live_save)
+        self.packet_panel.populate_interfaces(get_windows_if_list())
 
         # Painel inferior: fluxos e top talkers
         self.flow_panel = FlowSummaryPanel()
@@ -651,3 +657,73 @@ class MainWindow(QMainWindow):
             )
         except Exception as e:
             QMessageBox.critical(self, "Export Error", str(e))
+
+    # ── Live Capture ───────────────────────────────────────────────────────
+
+    @pyqtSlot(str, str)
+    def _on_pcap_live_start(self, iface: str, bpf_filter: str):
+        if not iface:
+            QMessageBox.warning(self, "Error", "Selecione uma interface de rede.")
+            return
+
+        # Limpa o estado atual
+        self._analyzer.clear()
+        self.packet_panel.populate([])
+        self.flow_panel.clear()
+        
+        self.packet_panel.set_live_mode(True)
+        self.packet_panel.set_status(f"Capturing on {iface}...")
+
+        if self._pcap_sniffer and self._pcap_sniffer.isRunning():
+            self._pcap_sniffer.stop()
+            self._pcap_sniffer.wait()
+
+        self._pcap_sniffer = PcapSniffer(iface=iface, bpf_filter=bpf_filter)
+        self._pcap_sniffer.packet_captured.connect(self._on_pcap_live_captured)
+        self._pcap_sniffer.capture_error.connect(self._on_pcap_live_error)
+        self._pcap_sniffer.capture_stopped.connect(self._on_pcap_live_stopped)
+        self._pcap_sniffer.start()
+
+    @pyqtSlot(list)
+    def _on_pcap_live_captured(self, batch: list):
+        self._analyzer.add_packets(batch)
+        # Atualiza filtros e views em tempo real
+        ip = self.packet_panel.ip_input.text().strip()
+        port = self.packet_panel.port_input.text().strip()
+        proto = self.packet_panel.proto_combo.currentText()
+        proto = "" if proto == "Any" else proto
+        text = self.packet_panel.text_input.text().strip()
+        self._on_pcap_filter(ip, port, proto, text)
+        self.packet_panel.set_status(f"Live Capturing... ({len(self._analyzer.all_packets)} packets)")
+
+    @pyqtSlot()
+    def _on_pcap_live_stop(self):
+        if self._pcap_sniffer and self._pcap_sniffer.isRunning():
+            self.packet_panel.set_status("Stopping capture...")
+            self._pcap_sniffer.stop()
+
+    @pyqtSlot()
+    def _on_pcap_live_stopped(self):
+        self.packet_panel.set_live_mode(False)
+        self.packet_panel.set_status(f"Capture stopped. ({len(self._analyzer.all_packets)} packets)")
+
+    @pyqtSlot(str)
+    def _on_pcap_live_error(self, err: str):
+        self.packet_panel.set_live_mode(False)
+        self.packet_panel.set_status("Capture error.")
+        QMessageBox.critical(self, "Live Capture Error", err)
+
+    @pyqtSlot()
+    def _on_pcap_live_save(self):
+        if not self._pcap_sniffer:
+            return
+            
+        filepath, _ = QFileDialog.getSaveFileName(
+            self, "Save PCAP", "", "PCAP Files (*.pcap)"
+        )
+        if not filepath:
+            return
+            
+        self._pcap_sniffer.save(filepath)
+        QMessageBox.information(self, "Saved", f"Capture saved to:\n{filepath}")
+
