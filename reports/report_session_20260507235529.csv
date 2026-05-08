@@ -1,0 +1,2 @@
+Host;Packets Sent;Packets Received;Loss (%);Min Latency (ms);Max Latency (ms);Avg Latency (ms);Jitter (ms);StdDev (ms);MOS
+8.8.8.8;4;4;0.00;26.63;28.02;27.17;0.89;0.60;4.39

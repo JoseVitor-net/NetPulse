@@ -112,3 +112,73 @@ class PingStats:
 
     def add_failure(self):
         self.packets_sent += 1
+
+
+# ──────────────────────────────────────────────────────────────
+# DTOs de Análise de Pacotes (v0.7)
+# ──────────────────────────────────────────────────────────────
+
+@dataclass
+class PacketRow:
+    """
+    Representa uma linha de pacote na tabela da UI.
+    Imutável após construção.
+    """
+    index:      int
+    timestamp:  float          # epoch seconds (float)
+    src_ip:     str
+    dst_ip:     str
+    src_port:   int            # 0 se protocolo sem porta (ICMP, etc.)
+    dst_port:   int
+    protocol:   str            # 'TCP', 'UDP', 'ICMP', 'ARP', 'Other'
+    length:     int            # bytes
+    info:       str            # descrição resumida
+
+    @property
+    def ts_str(self) -> str:
+        """Timestamp formatado para exibição."""
+        from datetime import datetime
+        return datetime.fromtimestamp(self.timestamp).strftime("%H:%M:%S.%f")[:-3]
+
+    @property
+    def flow_key(self) -> tuple:
+        """Chave de fluxo normalizada (bidirecional)."""
+        a = (self.src_ip, self.src_port)
+        b = (self.dst_ip, self.dst_port)
+        lo, hi = (a, b) if a <= b else (b, a)
+        return (lo[0], lo[1], hi[0], hi[1], self.protocol)
+
+
+@dataclass
+class FlowSummary:
+    """
+    Resumo de um fluxo de rede (conversa bidirecional entre dois endpoints).
+    key = (src_ip, src_port, dst_ip, dst_port, protocol)
+    """
+    key:        tuple
+    packets:    int   = 0
+    bytes_:     int   = 0
+    first_seen: float = 0.0   # epoch
+    last_seen:  float = 0.0   # epoch
+
+    @property
+    def duration_s(self) -> float:
+        return max(0.0, self.last_seen - self.first_seen)
+
+    @property
+    def label(self) -> str:
+        src_ip, src_port, dst_ip, dst_port, proto = self.key
+        return f"{src_ip}:{src_port}  ↔  {dst_ip}:{dst_port}  [{proto}]"
+
+
+@dataclass
+class CaptureSummary:
+    """
+    Métricas globais de uma captura PCAP.
+    """
+    total_packets:   int
+    total_bytes:     int
+    top_protocols:   list[tuple[str, int]]   # [(proto, count), ...] ordenado desc
+    top_hosts:       list[tuple[str, int]]   # [(ip, packet_count), ...]
+    flow_count:      int
+    duration_s:      float

@@ -1,41 +1,48 @@
 """
-MainWindow — Camada de apresentação do NetPulse v0.6.
+MainWindow — Camada de apresentação do NetPulse v0.7.
 
 Responsabilidades EXCLUSIVAS:
-- Renderizar a interface gráfica com dois modos: LIVE e REPLAY
-- Capturar inputs do usuário e delegar ao PingManager / ReplayEngine
-- Reagir aos sinais emitidos por PingManager e ReplayEngine
-- Coordenar HistoryPanel e SessionDetailPanel sem expor lógica de negócio
+- Renderizar a interface gráfica com três modos: LIVE, REPLAY e PCAP
+- Capturar inputs do usuário e delegar ao PingManager / ReplayEngine / PacketAnalyzer
+- Reagir aos sinais emitidos por PingManager, ReplayEngine e PcapReader
+- Coordenar todos os painéis sem expor lógica de negócio
 
 NÃO deve:
-- Conhecer PingService ou QThread
+- Conhecer PingService ou QThread internamente
 - Gerenciar estado de rede (stats_map, threads_map)
 - Acessar Storage diretamente
 """
 import json
+import os
+from datetime import datetime
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPlainTextEdit, QPushButton, QComboBox,
     QSpinBox, QGroupBox, QMessageBox, QTableWidget, QTableWidgetItem,
-    QHeaderView, QTabWidget, QSplitter
+    QHeaderView, QTabWidget, QSplitter, QFileDialog
 )
 from PyQt6.QtCore import Qt, pyqtSlot
 from PyQt6.QtGui import QFont, QColor
 
 from app.core.models import Alert, PingStats, SessionConfig
 from app.core.replay_engine import ReplayEngine
+from app.core.packet_analyzer import PacketAnalyzer, PacketFilter
+from app.infra.pcap_reader import PcapReader
 from app.services.ping_manager import PingManager
 from app.services.report_service import ReportService
 from app.ui.alert_panel import AlertPanel
 from app.ui.dashboard import PyQtGraphDashboard
 from app.ui.history_panel import HistoryPanel
 from app.ui.session_detail_panel import SessionDetailPanel
+from app.ui.packet_panel import PacketPanel
+from app.ui.flow_summary_panel import FlowSummaryPanel
 
 
-# Modo de operação da janela
+# Modos de operação da janela
 _MODE_LIVE   = "LIVE"
 _MODE_REPLAY = "REPLAY"
+_MODE_PCAP   = "PCAP"
 
 
 class MainWindow(QMainWindow):
@@ -54,6 +61,11 @@ class MainWindow(QMainWindow):
         self._replay_engine  = replay_engine or ReplayEngine(manager._storage)
         self._mode           = _MODE_LIVE
         self._host_row: dict[str, int] = {}
+
+        # v0.7 — estado do analisador de pacotes
+        self._analyzer       = PacketAnalyzer()
+        self._pcap_reader:   PcapReader | None = None
+        self._filtered_pkts  = []   # lista em cache apos filtro
 
         self._setup_ui()
         self._apply_styles()
@@ -185,6 +197,31 @@ class MainWindow(QMainWindow):
 
         self.tabs.addTab(replay_tab, "  Session Replay  ")
 
+        # ── Aba Packet Analysis (v0.7) ─────────────────────────────────
+        pcap_tab = QWidget()
+        pcap_layout = QVBoxLayout(pcap_tab)
+        pcap_layout.setContentsMargins(4, 4, 4, 4)
+        pcap_layout.setSpacing(4)
+
+        # Painel superior: tabela de pacotes com filtros
+        self.packet_panel = PacketPanel()
+        self.packet_panel.open_file_requested.connect(self._on_pcap_open)
+        self.packet_panel.filter_applied.connect(self._on_pcap_filter)
+        self.packet_panel.export_requested.connect(self._on_pcap_export)
+
+        # Painel inferior: fluxos e top talkers
+        self.flow_panel = FlowSummaryPanel()
+
+        # Splitter vertical entre tabela e resumo
+        pcap_splitter = QSplitter(Qt.Orientation.Vertical)
+        pcap_splitter.addWidget(self.packet_panel)
+        pcap_splitter.addWidget(self.flow_panel)
+        pcap_splitter.setStretchFactor(0, 3)
+        pcap_splitter.setStretchFactor(1, 2)
+        pcap_layout.addWidget(pcap_splitter)
+
+        self.tabs.addTab(pcap_tab, "  Packet Analysis  ")
+
         right_layout.addWidget(self.tabs, stretch=1)
         root.addWidget(right_panel, stretch=1)
 
@@ -310,8 +347,10 @@ class MainWindow(QMainWindow):
     # ─────────────────────────────────────────────
 
     def _on_tab_changed(self, index: int):
-        if index == 1:  # aba Replay
+        if index == 1:
             self._set_mode(_MODE_REPLAY)
+        elif index == 2:
+            self._set_mode(_MODE_PCAP)
         else:
             self._set_mode(_MODE_LIVE)
 
@@ -440,9 +479,12 @@ class MainWindow(QMainWindow):
         if mode == _MODE_LIVE:
             self.mode_badge.setText(f"● {_MODE_LIVE}")
             self.mode_badge.setStyleSheet("color: #a6e3a1;")
-        else:
+        elif mode == _MODE_REPLAY:
             self.mode_badge.setText(f"◈ {_MODE_REPLAY}")
             self.mode_badge.setStyleSheet("color: #cba6f7;")
+        elif mode == _MODE_PCAP:
+            self.mode_badge.setText(f"▤ {_MODE_PCAP}")
+            self.mode_badge.setStyleSheet("color: #89b4fa;")
 
     # ─────────────────────────────────────────────
     # Export — Relatório LIVE
@@ -518,3 +560,94 @@ class MainWindow(QMainWindow):
             if item:
                 item.setText(status)
                 item.setForeground(color)
+
+    # ─────────────────────────────────────────────
+    # Handlers — Packet Analysis (PCAP)
+    # ─────────────────────────────────────────────
+
+    @pyqtSlot()
+    def _on_pcap_open(self):
+        filepath, _ = QFileDialog.getOpenFileName(
+            self, "Open PCAP File", "", "PCAP Files (*.pcap *.pcapng);;All Files (*)"
+        )
+        if not filepath:
+            return
+
+        # Limpa o estado atual
+        self._analyzer.clear()
+        self.packet_panel.populate([])
+        self.flow_panel.clear()
+        self.packet_panel.set_status(f"Loading {os.path.basename(filepath)}...")
+        self.packet_panel.set_loading(True)
+
+        # Inicia a thread de leitura
+        if self._pcap_reader and self._pcap_reader.isRunning():
+            self._pcap_reader.stop()
+            self._pcap_reader.wait()
+
+        self._pcap_reader = PcapReader(filepath)
+        self._pcap_reader.packets_ready.connect(self._on_pcap_packets_ready)
+        self._pcap_reader.progress.connect(self._on_pcap_progress)
+        self._pcap_reader.finished_ok.connect(self._on_pcap_finished)
+        self._pcap_reader.error_occurred.connect(self._on_pcap_error)
+        self._pcap_reader.start()
+
+    @pyqtSlot(list)
+    def _on_pcap_packets_ready(self, batch: list):
+        self._analyzer.add_packets(batch)
+
+    @pyqtSlot(int, int)
+    def _on_pcap_progress(self, read_count: int, total: int):
+        self.packet_panel.set_status(f"Reading: {read_count:,} packets...")
+
+    @pyqtSlot(int)
+    def _on_pcap_finished(self, total: int):
+        self.packet_panel.set_loading(False)
+        self.packet_panel.set_status(f"Loaded {total:,} packets.")
+        self._on_pcap_filter("", "", "", "")
+
+    @pyqtSlot(str)
+    def _on_pcap_error(self, err: str):
+        self.packet_panel.set_loading(False)
+        self.packet_panel.set_status("Error loading PCAP.")
+        QMessageBox.critical(self, "PCAP Error", err)
+
+    @pyqtSlot(str, str, str, str)
+    def _on_pcap_filter(self, ip: str, port: str, proto: str, text: str):
+        if not self._analyzer.all_packets:
+            return
+
+        f = PacketFilter(ip, port, proto, text)
+        self._filtered_pkts = self._analyzer.filter(f)
+        
+        # Atualiza a tabela
+        self.packet_panel.populate(self._filtered_pkts)
+        
+        # Atualiza os painéis de fluxo
+        summary = self._analyzer.get_summary(self._filtered_pkts)
+        flows   = self._analyzer.get_flows(self._filtered_pkts)
+        self.flow_panel.populate(summary, flows)
+
+    @pyqtSlot()
+    def _on_pcap_export(self):
+        if not self._filtered_pkts:
+            return
+
+        # Escolher pasta destino
+        dirpath = QFileDialog.getExistingDirectory(self, "Select Directory for Export")
+        if not dirpath:
+            return
+
+        stamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        html_file = os.path.join(dirpath, f"pcap_report_{stamp}.html")
+        csv_file  = os.path.join(dirpath, f"pcap_report_{stamp}.csv")
+
+        try:
+            self._analyzer.export_html(self._filtered_pkts, html_file)
+            self._analyzer.export_csv(self._filtered_pkts, csv_file)
+            QMessageBox.information(
+                self, "Export Successful",
+                f"HTML: {html_file}\nCSV: {csv_file}"
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", str(e))
