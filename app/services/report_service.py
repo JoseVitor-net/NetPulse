@@ -1,5 +1,6 @@
 import os
-from jinja2 import Environment, FileSystemLoader
+import csv
+from jinja2 import Environment, FileSystemLoader, Template
 from loguru import logger
 from datetime import datetime
 from app.core.models import PingStats
@@ -10,57 +11,71 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NetPulse Report - {{ stats.host }}</title>
+    <title>NetPulse Report - Multi-Host</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #1e1e2e; color: #cdd6f4; margin: 0; padding: 20px; }
-        .container { max-width: 800px; margin: 0 auto; background-color: #181825; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .container { max-width: 900px; margin: 0 auto; background-color: #181825; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
         h1 { color: #89b4fa; text-align: center; }
-        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-top: 20px; }
-        .stat-card { background-color: #313244; padding: 15px; border-radius: 8px; text-align: center; }
-        .stat-value { font-size: 24px; font-weight: bold; color: #a6e3a1; margin-top: 10px; }
-        .stat-label { font-size: 14px; color: #bac2de; }
-        .footer { text-align: center; margin-top: 30px; font-size: 12px; color: #6c7086; }
+        h2 { color: #f38ba8; margin-top: 0; border-bottom: 1px solid #313244; padding-bottom: 10px; }
+        .host-section { margin-top: 30px; background-color: #1e1e2e; padding: 20px; border-radius: 8px; border: 1px solid #313244; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-top: 15px; }
+        .stat-card { background-color: #313244; padding: 10px; border-radius: 8px; text-align: center; }
+        .stat-value { font-size: 20px; font-weight: bold; color: #a6e3a1; margin-top: 8px; }
+        .stat-label { font-size: 13px; color: #bac2de; }
+        .footer { text-align: center; margin-top: 40px; font-size: 12px; color: #6c7086; }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>NetPulse Ping Report</h1>
-        <p style="text-align: center;">Target Host: <strong>{{ stats.host }}</strong></p>
         <p style="text-align: center;">Generated on: {{ date }}</p>
         
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-label">Packets Sent</div>
-                <div class="stat-value">{{ stats.packets_sent }}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Packets Received</div>
-                <div class="stat-value">{{ stats.packets_received }}</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Packet Loss</div>
-                <div class="stat-value">{{ "%.2f"|format(stats.packet_loss) }}%</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Min Latency</div>
-                <div class="stat-value">{{ "%.2f"|format(stats.min_latency) }} ms</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Max Latency</div>
-                <div class="stat-value">{{ "%.2f"|format(stats.max_latency) }} ms</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Avg Latency</div>
-                <div class="stat-value">{{ "%.2f"|format(stats.avg_latency) }} ms</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-label">Jitter</div>
-                <div class="stat-value">{{ "%.2f"|format(stats.jitter) }} ms</div>
+        {% for stats in stats_list %}
+        <div class="host-section">
+            <h2>Target: {{ stats.host }}</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Packets Sent</div>
+                    <div class="stat-value">{{ stats.packets_sent }}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Packets Received</div>
+                    <div class="stat-value">{{ stats.packets_received }}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Packet Loss</div>
+                    <div class="stat-value">{{ "%.2f"|format(stats.packet_loss) }}%</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Min Latency</div>
+                    <div class="stat-value">{{ "%.2f"|format(stats.min_latency) }} ms</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Max Latency</div>
+                    <div class="stat-value">{{ "%.2f"|format(stats.max_latency) }} ms</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Avg Latency</div>
+                    <div class="stat-value">{{ "%.2f"|format(stats.avg_latency) }} ms</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Jitter</div>
+                    <div class="stat-value">{{ "%.2f"|format(stats.jitter) }} ms</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">StdDev</div>
+                    <div class="stat-value">{{ "%.2f"|format(stats.std_dev) }} ms</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">MOS Score</div>
+                    <div class="stat-value">{{ "%.2f"|format(stats.mos) }}</div>
+                </div>
             </div>
         </div>
+        {% endfor %}
         
         <div class="footer">
-            Generated by NetPulse | A Professional Network Monitoring Tool
+            Generated by NetPulse | NOC Edition
         </div>
     </div>
 </body>
@@ -72,23 +87,56 @@ class ReportService:
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
 
-    def generate_html_report(self, stats: PingStats) -> str:
+    def generate_html_report(self, stats_list: list[PingStats]) -> str:
         try:
-            from jinja2 import Template
             template = Template(HTML_TEMPLATE)
             html_content = template.render(
-                stats=stats,
+                stats_list=stats_list,
                 date=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             )
             
-            filename = f"report_{stats.host.replace('.', '_')}_{datetime.now().strftime('%Y%m%d%H%M%S')}.html"
+            filename = f"report_session_{datetime.now().strftime('%Y%m%d%H%M%S')}.html"
             filepath = os.path.join(self.output_dir, filename)
             
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(html_content)
                 
-            logger.info(f"Report generated successfully: {filepath}")
+            logger.info(f"HTML report generated successfully: {filepath}")
             return filepath
         except Exception as e:
-            logger.error(f"Error generating report: {e}")
+            logger.error(f"Error generating HTML report: {e}")
+            return ""
+
+    def generate_csv_report(self, stats_list: list[PingStats]) -> str:
+        try:
+            filename = f"report_session_{datetime.now().strftime('%Y%m%d%H%M%S')}.csv"
+            filepath = os.path.join(self.output_dir, filename)
+            
+            with open(filepath, mode="w", newline="", encoding="utf-8") as csv_file:
+                writer = csv.writer(csv_file, delimiter=";")
+                # Headers
+                writer.writerow([
+                    "Host", "Packets Sent", "Packets Received", "Loss (%)", 
+                    "Min Latency (ms)", "Max Latency (ms)", "Avg Latency (ms)", 
+                    "Jitter (ms)", "StdDev (ms)", "MOS"
+                ])
+                
+                # Data Rows
+                for stats in stats_list:
+                    writer.writerow([
+                        stats.host,
+                        stats.packets_sent,
+                        stats.packets_received,
+                        f"{stats.packet_loss:.2f}",
+                        f"{stats.min_latency:.2f}",
+                        f"{stats.max_latency:.2f}",
+                        f"{stats.avg_latency:.2f}",
+                        f"{stats.jitter:.2f}",
+                        f"{stats.std_dev:.2f}",
+                        f"{stats.mos:.2f}"
+                    ])
+            logger.info(f"CSV report generated successfully: {filepath}")
+            return filepath
+        except Exception as e:
+            logger.error(f"Error generating CSV report: {e}")
             return ""

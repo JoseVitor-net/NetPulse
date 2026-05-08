@@ -82,6 +82,12 @@ class PingService(QThread):
                 err_result = PingResult(host=self.host, timestamp=timestamp, success=False, error_msg="Permission Denied")
                 self.result_received.emit(err_result)
                 break
+            except OSError as e:
+                logger.warning(f"Erro de rede intermitente, aguardando para retentar: {e}")
+                err_result = PingResult(host=self.host, timestamp=timestamp, success=False, error_msg="Network Error")
+                self.result_received.emit(err_result)
+                self.msleep(1000)
+                continue
             except Exception as e:
                 logger.error(f"Exceção inesperada no ping: {e}")
                 err_result = PingResult(host=self.host, timestamp=timestamp, success=False, error_msg=str(e))

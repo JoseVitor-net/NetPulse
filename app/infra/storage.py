@@ -124,8 +124,8 @@ class Storage:
                 conn.execute(
                     """INSERT INTO stats_snapshots
                        (session_id, host, avg_latency, min_latency,
-                        max_latency, packet_loss, timestamp)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        max_latency, packet_loss, std_dev, mos, timestamp)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         self._session_id,
                         stats.host,
@@ -133,6 +133,8 @@ class Storage:
                         stats.min_latency,
                         stats.max_latency,
                         stats.packet_loss,
+                        stats.std_dev,
+                        stats.mos,
                         datetime.now().isoformat(),
                     ),
                 )
@@ -207,7 +209,7 @@ class Storage:
                 conn.row_factory = sqlite3.Row
                 rows = conn.execute(
                     """SELECT host, avg_latency, min_latency, max_latency,
-                              packet_loss, timestamp
+                              packet_loss, std_dev, mos, timestamp
                        FROM stats_snapshots
                        WHERE session_id = ?
                        ORDER BY timestamp DESC""",
@@ -318,6 +320,8 @@ class Storage:
                         min_latency REAL,
                         max_latency REAL,
                         packet_loss REAL,
+                        std_dev     REAL DEFAULT 0.0,
+                        mos         REAL DEFAULT 0.0,
                         timestamp   TEXT NOT NULL,
                         FOREIGN KEY (session_id) REFERENCES sessions(session_id)
                     );
@@ -339,5 +343,15 @@ class Storage:
                         ON alerts(session_id);
                 """)
             logger.info("[Storage] Schema inicializado.")
+            
+            # Migração de retrocompatibilidade
+            try:
+                with sqlite3.connect(self._db_path) as conn:
+                    conn.execute("ALTER TABLE stats_snapshots ADD COLUMN std_dev REAL DEFAULT 0.0")
+                    conn.execute("ALTER TABLE stats_snapshots ADD COLUMN mos REAL DEFAULT 0.0")
+                logger.info("[Storage] Migração do schema v0.3 aplicada (std_dev, mos).")
+            except sqlite3.OperationalError:
+                pass # Colunas já existem
+                
         except Exception as e:
             logger.error(f"[Storage] Erro ao inicializar schema: {e}")

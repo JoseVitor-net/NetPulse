@@ -1,35 +1,48 @@
 # NetPulse
 
-Uma ferramenta de monitoramento de rede em tempo real com análise inteligente, histórico persistente e replay de sessões.
+Uma ferramenta de desktop leve para monitoramento de rede multi-host, análise heurística e visualização em tempo real baseada em Python e PyQt6.
 
-## Features
+## Funcionalidades Atuais Confirmadas
+- ✅ **Ping Simultâneo:** Monitoramento não-bloqueante de N hosts via lib `ping3` (ICMP nativo).
+- ✅ **Dashboard de Alta Performance:** Renderização O(1) fluida usando `pyqtgraph`.
+- ✅ **Inteligência Passiva:** `NetworkAnalyzer` preditivo capaz de apontar quebra no seu ISP baseando-se em correlação entre falhas de rotas distintas.
+- ✅ **Zero I/O Lag:** Backups das sessões enviados ao SQLite utilizando cache in-memory e descarregamento via Batch Queries.
+- ✅ **Time-Machine (Replay):** Capacidade inovadora de rever sessões antigas desenhadas progressivamente na sua tela.
 
-- Monitoramento ICMP multi-host em tempo real
-- Interface gráfica com PyQt6
-- Gráficos de latência em tempo real
-- Sistema de alertas (latência, perda, falha de ISP)
-- Análise inteligente de rede (NetworkAnalyzer)
-- Persistência completa em SQLite
-- Histórico de sessões de monitoramento
-- Replay de sessões como se fossem tempo real
-- Suporte a múltiplos hosts simultâneos
+## Roadmap Planejado
+- ⏳ Integração Nmap para visualização de portas.
+- ⏳ Exportação da Session via API.
+- ⏳ Integração com Modelos de Linguagem para emitir sumários falados de rede.
 
-## Arquitetura
+## Instalação e Execução
 
-O sistema é construído sobre uma arquitetura limpa em camadas, garantindo alta performance e isolamento de responsabilidades:
+### Requisitos
+- Windows / Linux
+- Python 3.11+ (Recomendado privilégios de Admin no Windows para sockets ICMP brutos).
 
-- **PingManager**: Orquestra a execução em tempo real, mediando a comunicação entre a rede e a UI.
-- **PingService**: Executa o ICMP em threads dedicadas (QThread), sem bloquear a interface.
-- **NetworkAnalyzer**: Motor puro Python que detecta anomalias de rede (quedas, picos e correlação de falhas de ISP) através de janelas deslizantes (Event Stream).
-- **Storage**: Persistência em banco de dados SQLite com gravação em batch para não causar gargalos de I/O nas execuções.
-- **ReplayEngine**: Motor independente de reprodução de histórico (Event Sourcing) que simula sessões passadas de forma temporal.
-- **UI (PyQt6)**: Camada passiva e focada apenas na visualização dos dados e interações do usuário.
+### Passos:
+1. Clone o projeto e entre no diretório.
+```bash
+git clone https://github.com/SEU_USUARIO/NetPulse.git
+cd NetPulse
+```
 
-## Como Executar
+2. Crie e ative um ambiente virtual:
+```bash
+python -m venv .venv
+# No Windows:
+.venv\Scripts\activate
+```
 
-Clone o repositório, ative seu ambiente virtual (recomendado) e instale as dependências:
-
+3. Instale os requerimentos rigorosos:
 ```bash
 pip install -r requirements.txt
+```
+
+4. Execute:
+```bash
 python main.py
 ```
+
+## Limitações Conhecidas
+Para que a ferramenta seja capaz de emitir pacotes ICMP brutos no Windows usando a biblioteca `ping3`, ela **requer execução do terminal como Administrador**. A falha de privilégio pode acarretar em permissões negadas em tempo de runtime.

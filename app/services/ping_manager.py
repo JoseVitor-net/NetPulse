@@ -95,6 +95,7 @@ class PingManager(QObject):
         for worker in self._threads.values():
             if worker.isRunning():
                 worker.stop()
+                worker.wait()
         self._storage.flush_all()
         self._session_manager.end()
 
@@ -137,6 +138,8 @@ class PingManager(QObject):
                     min_val=event.payload["min_latency"],
                     max_val=event.payload["max_latency"],
                     loss=event.payload["packet_loss"],
+                    std_dev=event.payload["std_dev"],
+                    mos=event.payload["mos"],
                 )
                 self.stats_updated.emit(event.host, fake_stats, "Historical")
                 
@@ -221,12 +224,14 @@ class _StatsSnapshot(PingStats):
     Subclasse de PingStats que sobrescreve as propriedades com valores pré-calculados
     vindos do banco. Permite reutilizar o sinal stats_updated sem criar nova tipagem Qt.
     """
-    def __init__(self, host: str, avg: float, min_val: float, max_val: float, loss: float):
+    def __init__(self, host: str, avg: float, min_val: float, max_val: float, loss: float, std_dev: float, mos: float):
         super().__init__(host=host)
         self._avg = avg
         self._min = min_val
         self._max = max_val
         self._loss = loss
+        self._std_dev = std_dev
+        self._mos = mos
 
     @property
     def avg_latency(self) -> float:
@@ -243,3 +248,11 @@ class _StatsSnapshot(PingStats):
     @property
     def packet_loss(self) -> float:
         return self._loss
+
+    @property
+    def std_dev(self) -> float:
+        return self._std_dev
+
+    @property
+    def mos(self) -> float:
+        return self._mos

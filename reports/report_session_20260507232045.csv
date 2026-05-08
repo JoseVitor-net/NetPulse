@@ -1,0 +1,4 @@
+Host;Packets Sent;Packets Received;Loss (%);Min Latency (ms);Max Latency (ms);Avg Latency (ms);Jitter (ms);StdDev (ms);MOS
+8.8.8.8;4;4;0.00;26.75;27.59;27.23;0.48;0.35;4.40
+1.1.1.1;4;4;0.00;28.79;30.98;29.63;1.18;0.97;4.39
+google.com;4;4;0.00;26.59;32.91;28.48;4.03;2.98;4.39

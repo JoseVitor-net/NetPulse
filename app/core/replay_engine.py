@@ -76,6 +76,8 @@ class ReplayEngine:
                     "min_latency": s["min_latency"] or 0.0,
                     "max_latency": s["max_latency"] or 0.0,
                     "packet_loss": s["packet_loss"] or 0.0,
+                    "std_dev": s.get("std_dev", 0.0) or 0.0,
+                    "mos": s.get("mos", 0.0) or 0.0,
                 }
             ))
 

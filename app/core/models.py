@@ -40,6 +40,7 @@ class PingStats:
     _min_latency: float = float('inf')
     _max_latency: float = 0.0
     _sum_latency: float = 0.0
+    _m2_latency: float = 0.0
 
     # Para Jitter cumulativo
     _last_latency: Optional[float] = None
@@ -65,14 +66,39 @@ class PingStats:
         return self._sum_latency / self.packets_received if self.packets_received > 0 else 0.0
 
     @property
+    def std_dev(self) -> float:
+        import math
+        if self.packets_received < 2:
+            return 0.0
+        return math.sqrt(self._m2_latency / (self.packets_received - 1))
+
+    @property
+    def mos(self) -> float:
+        if self.packets_received == 0:
+            return 0.0
+        eff_latency = self.avg_latency + (2 * self.jitter)
+        r = 93.2 - (eff_latency / 40.0)
+        r = r - (2.5 * self.packet_loss)
+        if r < 0: r = 0.0
+        if r > 100: r = 100.0
+        mos = 1.0 + (0.035 * r) + (r * (r - 60.0) * (100.0 - r) * 0.000007)
+        return max(1.0, min(4.5, mos))
+
+    @property
     def jitter(self) -> float:
         return self._sum_jitter / self._jitter_count if self._jitter_count > 0 else 0.0
 
     def add_latency(self, latency: float):
         self.packets_sent += 1
+        
+        # Welford's algorithm (online variance)
+        delta = latency - self.avg_latency if self.packets_received > 0 else latency
+        
         self.packets_received += 1
-
         self._sum_latency += latency
+        
+        delta2 = latency - self.avg_latency
+        self._m2_latency += delta * delta2
         if latency < self._min_latency:
             self._min_latency = latency
         if latency > self._max_latency:

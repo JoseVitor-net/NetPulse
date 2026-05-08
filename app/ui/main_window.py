@@ -116,9 +116,10 @@ class MainWindow(QMainWindow):
 
         # Stats Table
         self.table = QTableWidget()
-        self.table.setColumnCount(9)
+        self.table.setColumnCount(11)
         self.table.setHorizontalHeaderLabels([
-            "Host", "Sent", "Recv", "Loss (%)", "Min (ms)", "Max (ms)", "Avg (ms)", "Jitter (ms)", "Status"
+            "Host", "Sent", "Recv", "Loss (%)", "Min (ms)", "Max (ms)", 
+            "Avg (ms)", "Jitter (ms)", "StdDev", "MOS", "Status"
         ])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -259,7 +260,7 @@ class MainWindow(QMainWindow):
         # Conecta seleção apenas uma vez
         try:
             self.session_combo.currentIndexChanged.disconnect(self._on_session_selected)
-        except RuntimeError:
+        except (RuntimeError, TypeError):
             pass
         self.session_combo.currentIndexChanged.connect(self._on_session_selected)
 
@@ -323,13 +324,19 @@ class MainWindow(QMainWindow):
         self.table.setItem(row, 5, _item(f"{stats.max_latency:.1f}"))
         self.table.setItem(row, 6, _item(f"{stats.avg_latency:.1f}"))
         self.table.setItem(row, 7, _item(f"{stats.jitter:.1f}"))
-        self.table.setItem(row, 8, _item(status, status_color))
+        self.table.setItem(row, 8, _item(f"{stats.std_dev:.1f}"))
+        
+        mos = stats.mos
+        mos_color = QColor("#a6e3a1") if mos >= 4.0 else QColor("#f9e2af") if mos >= 3.0 else QColor("#f38ba8")
+        self.table.setItem(row, 9, _item(f"{mos:.1f}", mos_color))
+        
+        self.table.setItem(row, 10, _item(status, status_color))
 
     def _set_all_status(self, status: str):
         """Atualiza a coluna Status de todas as linhas da tabela."""
         color = QColor("#a6e3a1") if status in ("Finished", "Stopped") else QColor("#cdd6f4")
         for row in range(self.table.rowCount()):
-            item = self.table.item(row, 8)
+            item = self.table.item(row, 10)
             if item:
                 item.setText(status)
                 item.setForeground(color)
@@ -342,9 +349,16 @@ class MainWindow(QMainWindow):
         all_stats = self._manager.get_all_stats()
         if not all_stats:
             return
-        first_stats = next(iter(all_stats.values()))
-        filepath = self._report_service.generate_html_report(first_stats)
-        if filepath:
-            QMessageBox.information(self, "Report Generated", f"Saved to:\n{filepath}")
+        
+        stats_list = list(all_stats.values())
+        html_path = self._report_service.generate_html_report(stats_list)
+        csv_path = self._report_service.generate_csv_report(stats_list)
+        
+        if html_path and csv_path:
+            QMessageBox.information(
+                self, 
+                "Reports Generated", 
+                f"Multi-host reports saved successfully:\n\nHTML: {html_path}\nCSV: {csv_path}"
+            )
         else:
-            QMessageBox.warning(self, "Error", "Failed to generate report.")
+            QMessageBox.warning(self, "Error", "Failed to generate one or more reports.")
